@@ -284,7 +284,10 @@ Supabase 官方 guide 三頁（`/docs/guides/auth`、`/docs/guides/auth/password
 5. 驗證信也走 SMTP → Mailjet 的額度要涵蓋**註冊數**，不只是重置信。
 6. 既有帳號（含他自己那兩筆）已經是 confirmed，開開關不會把它們打回未驗證。
 
-**未驗的點（開開關後第一件事就是測這個）**：本專案還沒測過「Confirm email 開著時 `signup` 的實際回應形态」（現況一直是關著測的）。上面第 1 條依 GoTrue 標準行為寫的，要實測對一次。
+**已驗（2026-11-27 開起 Confirm email 後實測）：`signup` 在需要收信驗證時的回應形態**。用 `61548128+Zhufacheng@users.noreply.github.com` 打 `POST /auth/v1/signup`（新地址）→ **HTTP 200**，頂層欄位是 `['app_metadata','aud','confirmation_sent_at','created_at','email','id','identities','is_anonymous','phone','role','updated_at','user_metadata']`：
+- **沒有 `access_token`、也沒有 `user` 這一層** → user id 在**頂層 `id`**。註冊即登入那一種是 `{access_token…, user:{id}}`，兩種形狀**不一样**，代碼必須都吃（`user_id_from()` 與 app.js 的 `uid` 就是為這個）。
+- 有 `confirmation_sent_at`、**沒有 `email_confirmed_at`** 欄位 → 判「待驗證」不能靠 `email_confirmed_at`。
+- 前端那條「暫存顯示名稱 → 點驗證信回來才寫 profile」的路徑依賴此形狀，已按此實作並補測試。
 
 ## 11. 帳號層實作交付（2026-11-27，使用者說「全都做」）
 
@@ -367,6 +370,18 @@ Supabase 官方 guide 三頁（`/docs/guides/auth`、`/docs/guides/auth/password
 
 - **邊界要说清**：`queued` 是「Mailjet 接受並排送」，**等於**寄件端打通，**不等於**送達收件匣。他要在 Outlook 看到標題 `stock-analysis Mailjet probe 4` 那封才算送達驗收。
 - **測試碼踩的兩個坑（不是服務壞）**：① `docmd("MAIL FROM", "<a@b.c>")` 發出去是 `MAIL FROM <a@b.c>`（多一個空格）→ Mailjet 回 **501 Syntax**，正解是用 `s.mail()`／`s.rcpt()`（它們發 `MAIL FROM:<…>`）；② `smtplib.data()` 要 **bytes**，`msg + "\r\n"`（str）會 `TypeError: can't concat str to bytes`。另外 `sendmail()` 在 Mailjet 上拋過 `ValueError: not enough values to unpack (expected 2, got 0)`（讀到空應答），是客戶端炸點、不是寄件失敗的證據——逐指令才看得清。
+
+#### 11.1.3 Mailjet 收了信卻沒送（2026-11-27，使用者回報「註冊說已寄信但我沒收到」）
+
+三層逐層定位，卡點在第三層：
+
+1. **Supabase 交了信**：開起 Confirm email 後 `POST /auth/v1/signup` → **HTTP 200** 且回應帶 `confirmation_sent_at`（見 10.8 的形狀記錄）→ GoTrue 認為已委託寄件。
+2. **Mailjet 收了信**：SMTP `DATA` 回 **250 queued**（11.1.2），REST `GET /v3/REST/message` 查得到那幾筆。
+3. **Mailjet 一封信都沒送**：`GET /v3/REST/message?Desc=True` 六筆**全部 `Status=queued`、`AttemptCount=0`、無 `SoftStatus`**，最早那筆已掛 35 分鐘以上 → 不是排隊中的暫態，是**從未嘗試投遞**。他先前收到的重置信全部來自**內建 SMTP**，不是 Mailjet。
+
+判定：這形況是 Mailjet **免費帳號的 sandbox／未啟用**狀態——寄件人清單裡 `zhufacheng@yahoo.com` 是 `Status: Active`，但那只代表寄件人合法，**不代表帳號解鎖**；要驗證帳號的 email＋手機號碼才開始真送。旁證：`GET /v3/REST/destination/{id}` 回 **401 `Operation not allowed`**、`GET /v3.1/messages` 回 **404**（免費方案的 API 面受限，別拿這兩個當「查不到＝沒寄」的證據）。
+
+**尚未收掉的**：一封寄到帳號本人地址 `zhufacheng@yahoo.com`（主旨 `Mailjet self-address probe`）的測試信——收到代表 sandbox 只送本人地址；收不到代表帳號根本沒啟用。要使用者在 Mailjet 看 sandbox/驗證提示並在瀏覽器驗證 email＋手機，之後重測路人地址。
 
 ### 11.2 驗收狀態
 
