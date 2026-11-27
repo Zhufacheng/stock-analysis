@@ -357,6 +357,10 @@ Supabase 官方 guide 三頁（`/docs/guides/auth`、`/docs/guides/auth/password
 **v1 之後還開著的事（不是缺陷，是範圍外）**：
 
 1. **探測帳號要清**：`probe+20261127a/e/…@example.com` 等數筆留在 `auth.users`。刪要在 dashboard（Authentication → Users），或用**秘密 key** 打 `DELETE /auth/v1/admin/users/{id}`——公開 key 打 admin 端點不行。
-2. **開放路人註冊前要接第三方 SMTP**：內建 SMTP 限制是 **2 封/小時**、只發專案團隊成員地址（兩條都實測過）。有域名 → Resend（SMTP 要已驗證域名，550）；沒域名 → 選不卡 IP 白名單的（Mailjet 那類；Brevo 免費卡 Supabase 出口 IP，525）。
+2. **開放路人註冊前要接第三方 SMTP**：內建 SMTP 有**兩條不一樣的限流**（2026-11-27 文件＋本機實測）：
+   - **專案層級配額**：文件原文「the number of messages **your project** can send is limited… Currently this value is set to **2 messages per hour**」→ **所有用戶共用 2 封/小時**，不是每個帳號 2 封。實測補充：本輪第 3 通 `recover` 仍回 200，所以「恰好 2 封」這個數字我**沒有逐封追到送達**，只引用文件的專案配額說法。
+   - **按 email 的冷卻**：同一個 email 連續按 → **HTTP 429 `over_email_send_rate_limit`**「For security purposes, you can only request this after 56 seconds.」；**立刻換另一個 email 就回 200** → 這條是按地址計，不是全域。
+   - 還有一條比配額更硬的：**只發給專案團隊成員地址**，其他地址「fail with the error message *Email address not authorized*」（文件原文）→ 路人註冊時重置信根本發不出去，這才是內建 SMTP 不能上生產的主因（文件自稱 not meant for production、best-effort only）。
+   有域名 → Resend（SMTP 要已驗證域名，550）；沒域名 → 選不卡 IP 白名單的（Mailjet 那類；Brevo 免費卡 Supabase 出口 IP，525）。
 3. **股價資料那條線**（SPEC 第 4 節之後）還沒動，帳號層之外沒有代碼。
 
