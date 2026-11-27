@@ -1,0 +1,10 @@
+# 終端層的登入身分檔（SPEC 10.7 定案：repo 內 gitignored 檔）。
+# 裡面是 access_token / refresh_token，屬機器狀態，不進 git。
+auth-session.json
+
+# 放機器專屬覆寫（例：本機測试要換 Supabase 專案時），内容与 config.js 同格式
+config.local.js
+
+__pycache__/
+*.pyc
+.DS_Store

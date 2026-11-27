@@ -1,0 +1,62 @@
+:root { --fg:#1c1c1c; --muted:#666; --line:#ddd; --ok:#1a6b34; --err:#a12626; --bg:#fafafa; }
+* { box-sizing: border-box; }
+
+/* sunflower 踩過的坑（2026-11-26）：.panel{display:grid} 的權重蓋過內建 [hidden]{display:none}
+   → tab 切換無效、三個表單同時顯示。这里直接補一條 !important，不照內建權重賭。 */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  max-width: 46rem;
+  font: 16px/1.6 system-ui, "Noto Sans TC", sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+h1 { margin: 0; font-size: 1.5rem; }
+h2 { margin: 0 0 .75rem; font-size: 1.1rem; }
+.sub { color: var(--muted); font-size: .85rem; margin: .25rem 0 1rem; }
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+.tab {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: .4rem .9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+}
+.tab[aria-selected="true"] { background: var(--fg); color: #fff; border-color: var(--fg); }
+
+label { display: block; margin-bottom: .75rem; font-size: .9rem; }
+input {
+  display: block;
+  width: 100%;
+  margin-top: .25rem;
+  padding: .5rem .6rem;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+input:focus { outline: 2px solid #7aa7ff; outline-offset: 1px; }
+
+button {
+  font: inherit;
+  padding: .45rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+.row { display: flex; gap: .5rem; flex-wrap: wrap; }
+.hint { color: var(--muted); font-size: .8rem; margin: .5rem 0 0; }
+.msg { min-height: 1.5em; font-size: .9rem; margin-top: 1rem; }
+.msg.ok { color: var(--ok); }
+.msg.err { color: var(--err); }
