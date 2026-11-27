@@ -50,6 +50,11 @@ python3 tests/account_test.py
 - ✅ `profile` 表與 RLS：匿名查回 `[]`（不是 404）、註冊寫入顯示名稱、whoami 讀回 —— 三條都對真實專案測過。
 - ✅ 重置密碼的寄件與送達：`recover` 回 200，收件匣有信（2026-11-27）。
 - ✅ Pages 部署：六個資產（根目錄、`index.html`、`css/styles.css`、`js/app.js`、`js/auth-api.js`、`config.js`）全 200，且 byte 數與本機 commit 內容逐檔一致。
-- ⬜ 網頁層的渲染 —— 本機沒有圖形瀏覽器，要開瀏覽器按過註冊/登入/登出才算驗過。
-- ⬜ 重置信裡那條連結（點下去設新密碼）—— 等使用者在瀏覽器點過才算。
+- ✅ 網頁層的渲染與點擊：真瀏覽器註冊、登出、再登入都過（2026-11-27）。
+- ✅ 重置密碼整條：信裡連結落在本站 → 設新密碼 → 舊密碼立刻回 **400 `invalid_credentials`**（證明服務端真的換掉了）。
+
+### 之後（不是缺陷，是範圍外）
+
+- 探測帳號 `probe+…@example.com` 還留在 `auth.users`，要刪在 dashboard 的 Users 頁（公開 key 打不了 admin 端點）。
+- 開放路人註冊前要接第三方 SMTP：內建 SMTP 是 2 封/小時、只發團隊成員地址。
 

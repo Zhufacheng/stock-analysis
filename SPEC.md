@@ -348,8 +348,15 @@ Supabase 官方 guide 三頁（`/docs/guides/auth`、`/docs/guides/auth/password
 - `GET /repos/{owner}/{repo}/pages` 在**剛啟用後匿名會回 404**、帶鑰回 200（`status: built`）→ 驗 Pages 狀態要帶鑰，別用匿名查就斷定「還沒啟用」。
 - 本機取 GitHub token 的路徑：`GIT_ASKPASS` 直調回 `Bad status code: 500`（VS Code IPC 失效），`printf 'protocol=https\nhost=github.com\n\n' | git credential fill` 拿得到 `gho_…`（40 字元）→ push 與 API 都走這條。
 
-**還不能宣稱驗過的兩件事**：
+**已驗收（2026-11-27，使用者在瀏覽器實測 ＋ 助手本機對照）**：帳號層 v1 五件事全部走通，包含只有真瀏覽器能驗的兩段。
+- 網頁層渲染與點擊：使用者開 `https://zhufacheng.github.io/stock-analysis/` 註冊成功、登出後再登入成功（本機無圖形瀏覽器，這層只能由他的瀏覽器定案）。
+- 重置密碼的「點連結 → 設新密碼」：信裡連結落在本站頁面、出現設新密碼面板、設定後生效。**本機對照證據**：用重置前的舊密碼打 `grant_type=password` → **HTTP 400 `invalid_credentials`** → 密碼真的在服務端被換掉，不是畫面假成功。
 
-1. 網頁層的渲染與點擊 —— 本機沒有圖形瀏覽器，邏輯層全綠不等於畫面正常（sunflower 的 tab 失效就是這層漏掉的，CSS 已預先補 `[hidden]{display:none !important}`）。站台已上線，等使用者開瀏覽器按過註冊/登入/登出。
-2. **重置密碼的「點連結設新密碼」那一段** —— Site URL 已設成 Pages 位址、站台已上線，Site URL 生效與否**只能用下一封信的連結驗**（實測：`GET /auth/v1/settings` 帶公開 key 讀得到 `mailer_autoconfirm`、`disable_signup`、`external`，**讀不到 `site_url`**）。已排除的連線面：地址限制（團隊地址回 200、非團隊回 invalid，兩邊都實測過）、TLS／port（三家端點本機實測 STARTTLS 升級都成功）、認證（Brevo 帳密正確、Resend key 驗過）；自訂 SMTP 那兩家卡的是服務側政策（Resend 550 要已驗證域名、Brevo 525 要 IP 白名單，見 11.1 第 4、5 條）。
+**Site URL 的驗收邊界（一條踩過的坑）**：`GET /auth/v1/settings` 帶公開 key 讀得到 `mailer_autoconfirm`、`disable_signup`、`external`，**讀不到 `site_url`** → Site URL 生不生效只能看信裡連結。實測到第一封信的連結落在 `https://zhufacheng.github.io/`（本站根目錄是使用者的 Jekyll 使用者站，title `zhufacheng.github.io | Zhufacheng`，與他「回到 github 主頁」的描述對上），**隔一次重寄就落在 `/stock-analysis/`**。`js/app.js` 的 recovery 分支只換面板、沒有任何 `location` 跳頁，所以落地點是連結本身而非前端跳轉。根因**未證明**，最可能是「按 Save 後幾秒就打 `recover`，Supabase 存 Auth 設定會重啟服務，那封信帶著舊配置出發」→ 教訓：**改完 Auth 設定要等服務重啟再驗**，別照第一封信下結論。
+
+**v1 之後還開著的事（不是缺陷，是範圍外）**：
+
+1. **探測帳號要清**：`probe+20261127a/e/…@example.com` 等數筆留在 `auth.users`。刪要在 dashboard（Authentication → Users），或用**秘密 key** 打 `DELETE /auth/v1/admin/users/{id}`——公開 key 打 admin 端點不行。
+2. **開放路人註冊前要接第三方 SMTP**：內建 SMTP 限制是 **2 封/小時**、只發專案團隊成員地址（兩條都實測過）。有域名 → Resend（SMTP 要已驗證域名，550）；沒域名 → 選不卡 IP 白名單的（Mailjet 那類；Brevo 免費卡 Supabase 出口 IP，525）。
+3. **股價資料那條線**（SPEC 第 4 節之後）還沒動，帳號層之外沒有代碼。
 
