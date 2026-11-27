@@ -267,9 +267,26 @@ Supabase 官方 guide 三頁（`/docs/guides/auth`、`/docs/guides/auth/password
 | profile 的 RLS policy 內容 | 未寫。方向已定：`authenticated` 讀寫自己那一筆，`anon` 不給讀 | 開著「新表自動開 RLS」→ 沒 policy 查回 0 列、寫入被擋（10.2） |
 | 建表的 SQL | 分工已定（助手寫 SQL、使用者在 dashboard SQL Editor 貼/run），SQL 本身尚未寫 | 公開 key 不能做 DDL（10.6.1），本機也沒有 psql client |
 
-## 11. 帳號層實作交付（2026-11-27，使用者說「全都做」）
+### 10.8 商用化拍板（2026-11-27，使用者三題逐項拍板）
 
-三層一次寫入本機 repo，**尚未部署、尚未 commit**。
+| 項目 | 定案 | 依據與連帶要求 |
+|---|---|---|
+| SMTP 服務 | **Mailjet**（免域名那一條） | 免費 200 封/日、6,000 封/月；本機實測端點 `in-v3.mailjet.com` 587/25 有廣告 STARTTLS 且升級成功、無預設 IP 白名單。對照：Resend 卡已驗證域名（550）、Brevo 免費卡 Supabase 出口 IP（525）。**寄件人驗證方式尚未核到文件**，註冊後要實測確認 |
+| email 確認 | **開起來**（註冊要收信驗證） | 現況是關（實測 `mailer_autoconfirm: true`）。開起來的代價見下方「連帶改動」 |
+| Supabase 方案 | **先用免費方案** | 文件實查：免費方案 **50,000 MAU**、DB **500 MB**、頻寬 **5 GB**、**閒置一週專案暫停**；Pro 為 $25/月（不暫停）。用戶數不是瓶頸，暫停才是 |
+
+**開 Confirm email 的連帶改動（這是有代碼工作的，不只是 dashboard 開關）**
+
+1. `signup` 的回應會變：需要收信驗證時，GoTrue 回的是 **user，沒有 `access_token`/`session`**。目前 `js/app.js` 註冊成功分支直接 `saveSession(r.session)` 再 `showWho(r.session)` → 無 token 時會拿到 `undefined`，`showWho` 讀 `session.access_token` 會噴 TypeError。**要加「驗證信已寄出」這個狀態**，註冊後不算登入。
+2. **顯示名稱的寫入時機要挪**：signup 沒 token 就寫不了 profile。方向＝註冊時把顯示名稱暫存 localStorage（按 email 鍵），等使用者點驗證連結回到頁面時（URL 帶 `type=signup` 與 token）用那支 token 寫入。
+3. 前端要認 **`type=signup`**：目前 `recoveryParams()` 只認 `type=recovery`。
+4. 未驗證就登入會回 **`email_not_confirmed`**（前端 `MESSAGES` 已有這句中文翻譯）。
+5. 驗證信也走 SMTP → Mailjet 的額度要涵蓋**註冊數**，不只是重置信。
+6. 既有帳號（含他自己那兩筆）已經是 confirmed，開開關不會把它們打回未驗證。
+
+**未驗的點（開開關後第一件事就是測這個）**：本專案還沒測過「Confirm email 開著時 `signup` 的實際回應形态」（現況一直是關著測的）。上面第 1 條依 GoTrue 標準行為寫的，要實測對一次。
+
+## 11. 帳號層實作交付（2026-11-27，使用者說「全都做」）
 
 | 檔 | 角色 |
 |---|---|
