@@ -351,6 +351,23 @@ Supabase 官方 guide 三頁（`/docs/guides/auth`、`/docs/guides/auth/password
 - **尚未驗的只剩連結那一段**：信裡的連結指向 dashboard 的 **Site URL**，而 Site URL **還沒設**（預設 `http://localhost:3000`），所以「點連結 → 設新密碼 → 登入成功」這一段要等 Site URL 設好、Pages 上線後由使用者的瀏覽器驗。
 - 因此 v1 的「忘記密碼」可以**零新帳號**先跑通（內建 SMTP 的 2 封/小時、只發團隊成員兩條限制對 v1 開發階段可接受）；開放路人註冊前仍要接第三方 SMTP（見 11.1 第 4、5 條：有域名 → Resend；沒域名 → 選不卡 IP 白名單的）。
 
+#### 11.1.2 Mailjet 接線實測（2026-11-27，本機 python3 `smtplib` 逐指令看應答）
+
+使用者拍板用 Mailjet 後貼來兩條 key（API key / Secret key，**都是秘密，未寫進 repo 任何檔案**）。按 11.1 那條新擬的規矩，**動 dashboard 之前先從本機驗到真的寄出一封信**：
+
+| 步驟 | 應答 |
+|---|---|
+| `EHLO`（587） | 250，廣告 `starttls`（小寫鍵）與 `PLAIN LOGIN DIGEST-MD5 CRAM-MD5` |
+| `STARTTLS` | 升級成功（587 與 25 都是明文連線＋STARTTLS，符合 Supabase 的連線語意） |
+| `LOGIN`（API key ＋ Secret key） | **235 `2.7.0 Authentication successful`** |
+| `MAIL FROM:<zhufacheng@yahoo.com>` | **250 `2.1.0 Ok`** → 寄件人沒被擋（沒有 sender-not-validated 類訊息） |
+| `RCPT TO:<Zhufacheng@outlook.com>` | **250 `2.1.5 Ok`** |
+| `DATA` | **250 `OK queued as 6d35e492-…`** → Mailjet 已收件排送 |
+| `QUIT` | 221 |
+
+- **邊界要说清**：`queued` 是「Mailjet 接受並排送」，**等於**寄件端打通，**不等於**送達收件匣。他要在 Outlook 看到標題 `stock-analysis Mailjet probe 4` 那封才算送達驗收。
+- **測試碼踩的兩個坑（不是服務壞）**：① `docmd("MAIL FROM", "<a@b.c>")` 發出去是 `MAIL FROM <a@b.c>`（多一個空格）→ Mailjet 回 **501 Syntax**，正解是用 `s.mail()`／`s.rcpt()`（它們發 `MAIL FROM:<…>`）；② `smtplib.data()` 要 **bytes**，`msg + "\r\n"`（str）會 `TypeError: can't concat str to bytes`。另外 `sendmail()` 在 Mailjet 上拋過 `ValueError: not enough values to unpack (expected 2, got 0)`（讀到空應答），是客戶端炸點、不是寄件失敗的證據——逐指令才看得清。
+
 ### 11.2 驗收狀態
 
 **已驗收（2026-11-27，使用者在 dashboard 跑完 `sql/profile.sql` 後由助手實測）**：`profile` 表與 RLS policy 的真實行為三條全通。
