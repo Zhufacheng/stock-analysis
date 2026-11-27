@@ -343,8 +343,13 @@ Supabase 官方 guide 三頁（`/docs/guides/auth`、`/docs/guides/auth/password
 
 **已驗收（2026-11-27，退回內建 SMTP 後）**：重置密碼的**寄件與送達** —— recover 回 200，使用者回報 Outlook 收件匣「收到了」（細節見 11.1.1）。
 
+**已驗收（2026-11-27，commit `34fb464` push 後部署到 GitHub Pages）**：`https://zhufacheng.github.io/stock-analysis/` 六個資產全 **200**，內容形態正確（`index.html` → `text/html`、`css/styles.css` → `text/css`、三個 `.js` → `application/javascript`），且 byte 數與本機 commit 逐檔一致（3190／1841／7816／6015／1533）→ 線上跑的就是這筆 commit。部署流程兩條事實：
+- Pages **啟用後第一次建置不會自己跑**，要 `POST /repos/{owner}/{repo}/pages/builds`（sunflower 那次的老坑，這次照著做所以一次就起來）。
+- `GET /repos/{owner}/{repo}/pages` 在**剛啟用後匿名會回 404**、帶鑰回 200（`status: built`）→ 驗 Pages 狀態要帶鑰，別用匿名查就斷定「還沒啟用」。
+- 本機取 GitHub token 的路徑：`GIT_ASKPASS` 直調回 `Bad status code: 500`（VS Code IPC 失效），`printf 'protocol=https\nhost=github.com\n\n' | git credential fill` 拿得到 `gho_…`（40 字元）→ push 與 API 都走這條。
+
 **還不能宣稱驗過的兩件事**：
 
-1. 網頁層的渲染與點擊 —— 本機沒有圖形瀏覽器，邏輯層全綠不等於畫面正常（sunflower 的 tab 失效就是這層漏掉的，CSS 已預先補 `[hidden]{display:none !important}`）。要等 push 上 Pages 由使用者開瀏覽器按過。
-2. **重置密碼的「點連結設新密碼」那一段** —— 信裡的連結指向 dashboard 的 **Site URL，而它還沒設**（現為預設 `http://localhost:3000`），要等 Site URL 設成 Pages 位址、頁面部署後才算整條收掉。已排除的連線面：地址限制（團隊地址回 200、非團隊回 invalid，兩邊都實測過）、TLS／port（三家端點本機實測 STARTTLS 升級都成功）、認證（Brevo 帳密正確、Resend key 驗過）；自訂 SMTP 那兩家卡的是服務側政策（Resend 550 要已驗證域名、Brevo 525 要 IP 白名單，見 11.1 第 4、5 條）。
+1. 網頁層的渲染與點擊 —— 本機沒有圖形瀏覽器，邏輯層全綠不等於畫面正常（sunflower 的 tab 失效就是這層漏掉的，CSS 已預先補 `[hidden]{display:none !important}`）。站台已上線，等使用者開瀏覽器按過註冊/登入/登出。
+2. **重置密碼的「點連結設新密碼」那一段** —— Site URL 已設成 Pages 位址、站台已上線，Site URL 生效與否**只能用下一封信的連結驗**（實測：`GET /auth/v1/settings` 帶公開 key 讀得到 `mailer_autoconfirm`、`disable_signup`、`external`，**讀不到 `site_url`**）。已排除的連線面：地址限制（團隊地址回 200、非團隊回 invalid，兩邊都實測過）、TLS／port（三家端點本機實測 STARTTLS 升級都成功）、認證（Brevo 帳密正確、Resend key 驗過）；自訂 SMTP 那兩家卡的是服務側政策（Resend 550 要已驗證域名、Brevo 525 要 IP 白名單，見 11.1 第 4、5 條）。
 
