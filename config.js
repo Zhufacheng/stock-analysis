@@ -23,6 +23,9 @@ window.STOCK_CONFIG = {
   site_url: "https://zhufacheng.github.io/stock-analysis/",
 
   session_storage_key: "stock.session.v1",
+  // Confirm email 開著時，註冊回的是 user、沒有 token → 顯示名稱先暫存在這裡，
+  // 等使用者點驗證連結回到頁面（URL 帶 type=signup 與 token）才寫進 profile 表。
+  pending_profile_key: "stock.pendingProfile.v1",
   // access token 實測生命期 3600 秒（SPEC 10.6.2）；提前這個秒數就視為過期、先刷新
   refresh_skew_seconds: 60
 };

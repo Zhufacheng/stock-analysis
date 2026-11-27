@@ -101,7 +101,10 @@ const DEFAULT_ROUTES = [
   { method: "GET", includes: "/auth/v1/user", status: 200, body: JSON.stringify({ id: "u1", email: "a@b.c" }) },
   { method: "PUT", includes: "/auth/v1/user", status: 200, body: JSON.stringify({ id: "u1", email: "a@b.c" }) },
   { method: "GET", includes: "/rest/v1/profile", status: 200, body: JSON.stringify([{ user_id: "u1", "顯示名稱": "小美" }]) },
+  { method: "POST", includes: "/rest/v1/profile", status: 201, body: JSON.stringify([{ user_id: "u1" }]) },
   { method: "POST", includes: "/auth/v1/logout", status: 204, body: "" },
+  { method: "POST", includes: "/auth/v1/signup", status: 200,
+    body: JSON.stringify({ access_token: "A", refresh_token: "R", expires_in: 3600, user: { id: "u1", email: "a@b.c" } }) },
   { method: "POST", includes: "/auth/v1/token", status: 200, body: JSON.stringify({}) }
 ];
 
@@ -126,7 +129,7 @@ function loadApp(opts) {
     console: console,
     document: document,
     location: { hash: o.hash || "", search: "" },
-    localStorage: makeLocalStorage(o.session ? { "stock.session.v1": JSON.stringify(o.session) } : {}),
+    localStorage: makeLocalStorage(o.storage || (o.session ? { "stock.session.v1": JSON.stringify(o.session) } : {})),
     fetch: makeFetch(o.routes || DEFAULT_ROUTES, calls),
     URLSearchParams: URLSearchParams,
     FormData: function FormData(form) { this._f = (form && form._fields) || []; },
@@ -224,4 +227,63 @@ test("页面底部不再有 backend-note（那行字已删）", async function (
   const app = loadApp({});
   await app.flush();
   assert.ok(app.calls.length >= 0); // 載入過程沒炸（引用不存在的 id 會在這裡噴出來）
+});
+
+test("Confirm email 關著（現況）：註冊回有 session → 註冊即登入並寫 profile", async function () {
+  const app = loadApp({});
+  await app.flush();
+  app.els["form-signup"]._fields = [["email", "a@b.c"], ["password", "Passw0rd!"], ["display_name", "小美"]];
+  app.els["form-signup"].dispatch("submit");
+  await app.flush();
+
+  assert.match(app.sandbox.localStorage._store["stock.session.v1"], /"access_token":"A"/, "註冊即登入要存身分");
+  const posted = app.calls.filter(function (c) { return c.method === "POST" && c.url.indexOf("/rest/v1/profile") >= 0; });
+  assert.strictEqual(posted.length, 1, "有 token 就立刻寫顯示名稱");
+  assert.strictEqual(app.els["whoami"].hidden, false, "註冊後直接顯示登入狀態");
+  assert.strictEqual(app.sandbox.localStorage._store["stock.pendingProfile.v1"], undefined, "這一條路徑不該留暫存");
+});
+
+// ── Confirm email 開著時的兩條路徑（SPEC 10.8）。signup 的回應形狀是推的、尚未實測，
+//    所以這裡鎖的是「我們怎麼吃這一種形狀」，不是 GoTrue 的行為。
+test("Confirm email 開著：註冊回無 session → 提示驗證信、不算登入、先不寫 profile", async function () {
+  const routes = DEFAULT_ROUTES.map(function (r) {
+    return (r.method === "POST" && r.includes === "/auth/v1/signup")
+      ? { method: "POST", includes: "/auth/v1/signup", status: 200,
+          body: JSON.stringify({ id: "u9", email: "new@b.c", email_confirmed_at: null }) }
+      : r;
+  });
+  const app = loadApp({ routes: routes });
+  await app.flush();
+  app.tabEls[1].dispatch("click");
+  app.els["form-signup"]._fields = [["email", "new@b.c"], ["password", "Passw0rd!"], ["display_name", "小明"]];
+  app.els["form-signup"].dispatch("submit");
+  await app.flush();
+
+  assert.match(app.els["msg"].textContent, /驗證信已寄到/, "要告訴使用者去收信");
+  const store = app.sandbox.localStorage._store;
+  assert.strictEqual(store["stock.session.v1"], undefined, "沒有 token 就不該寫登入身分");
+  const pending = JSON.parse(store["stock.pendingProfile.v1"]);
+  assert.strictEqual(pending.display_name, "小明");
+  assert.strictEqual(pending.user_id, "u9", "user id 在整個回應的顶层（這一種形狀）");
+  assert.deepStrictEqual(app.visiblePanels(), ["panel-signup"], "註冊後留在他剛用的註冊分頁（訊息顯示在下方），不要跳頁");
+  assert.deepStrictEqual(app.calls.filter(function (c) { return c.method === "POST" && c.url.indexOf("/rest/v1/profile") >= 0; }),
+                         [], "無 token 時不該打 profile（寫不進去）");
+});
+
+test("點註冊驗證信回來（type=signup）：存 token、補寫顯示名稱、顯示登入狀態", async function () {
+  const app = loadApp({
+    hash: "#access_token=NEWTOK&refresh_token=R9&expires_in=3600&type=signup",
+    storage: { "stock.pendingProfile.v1": JSON.stringify({ user_id: "u1", email: "a@b.c", display_name: "小美" }) }
+  });
+  await app.flush();
+
+  assert.strictEqual(app.els["whoami"].hidden, false, "驗證成功後顯示登入狀態");
+  assert.strictEqual(app.els["tabs"].hidden, true, "從信進來時不顯示分頁列");
+  assert.deepStrictEqual(app.visiblePanels(), [], "從信進來時不該有任何分頁面板");
+  const posted = app.calls.filter(function (c) { return c.method === "POST" && c.url.indexOf("/rest/v1/profile") >= 0; });
+  assert.strictEqual(posted.length, 1, "要用信裡那支 token 寫入暫存的顯示名稱");
+  const store = app.sandbox.localStorage._store;
+  assert.strictEqual(store["stock.pendingProfile.v1"], undefined, "寫完要清掉暫存");
+  assert.match(store["stock.session.v1"], /NEWTOK/, "信裡的 token 要存下來");
+  assert.match(app.els["who-text"].textContent, /小美/);
 });

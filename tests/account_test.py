@@ -88,6 +88,12 @@ class TestSessionShape(unittest.TestCase):
         self.assertTrue(account.is_expired({"expires_at": now + 30}))     # 剩 30 秒 < skew 60
         self.assertFalse(account.is_expired({"expires_at": now + 600}))
 
+    def test_user_id_from_吃兩種signup形狀(self):
+        # 註冊即登入時 id 在 payload["user"]；需要收信驗證時整個 payload 就是 user（SPEC 10.8）
+        self.assertEqual(account.user_id_from({"access_token": "A", "user": {"id": "u1"}}), "u1")
+        self.assertEqual(account.user_id_from({"id": "u9", "email": "a@b.c"}), "u9")
+        self.assertIsNone(account.user_id_from({}))
+
 
 class TestErrorMapping(unittest.TestCase):
     def test_user_already_exists_翻成中文(self):
@@ -282,6 +288,15 @@ class TestCommands(unittest.TestCase):
             return 404, {"message": "Could not find the table 'public.profile' in the schema cache"}
         account.api = fake
         self.assertEqual(account.cmd_register([]), 0)
+
+    def test_register_Confirm_email開著時不回token就不寫身分檔(self):
+        os.environ.update({"STOCK_EMAIL": "a@b.c", "STOCK_PASSWORD": "Probe!2026pw", "STOCK_DISPLAY_NAME": "小美"})
+        calls = []
+        account.api = lambda *a, **k: calls.append(a) or (
+            200, {"id": "u9", "email": "a@b.c", "email_confirmed_at": None})
+        self.assertEqual(account.cmd_register([]), 0)
+        self.assertIsNone(account.load_session(), "沒有 access_token 就不該寫登入身分")
+        self.assertEqual([c[1] for c in calls], ["/auth/v1/signup"], "無 token 時不該打 profile（寫不進去）")
 
     def test_logout_先清本地再打端點(self):
         account.save_session({"access_token": "A", "refresh_token": "R", "expires_at": int(time.time()) + 3600})

@@ -36,6 +36,14 @@
   function saveSession(s) { localStorage.setItem(cfg.session_storage_key, JSON.stringify(s)); }
   function clearSession() { localStorage.removeItem(cfg.session_storage_key); }
 
+  // Confirm email 開著時，註冊沒有 token → 顯示名稱暫存這裡，點驗證連結回來才寫 profile
+  function loadPending() {
+    try { return JSON.parse(localStorage.getItem(cfg.pending_profile_key) || "null"); }
+    catch (e) { return null; }
+  }
+  function savePending(p) { localStorage.setItem(cfg.pending_profile_key, JSON.stringify(p)); }
+  function clearPending() { localStorage.removeItem(cfg.pending_profile_key); }
+
   // access token 只有 3600 秒（實測）→ 過期就先刷新。refresh 會換新 refresh_token，必須寫回。
   function ensureSession() {
     const s = loadSession();
@@ -97,8 +105,18 @@
     msg("註冊中…");
     client.signup(v.email, v.password).then(function (r) {
       if (!r.ok) { msg(failText(r), "err"); return; }
+      // GoTrue 的 signup 形狀有兩種：註冊即登入時是 {access_token…, user:{id}}；
+      // 需要收信驗證時只回 user 物件本身（**本專案尚未實測過這一種**，SPEC 10.8）→ 兩種都吃。
+      const uid = (r.data && (r.data.user ? r.data.user.id : r.data.id)) || null;
+      // Confirm email 開著時signup 回 user、沒有 access_token → 還不算登入（SPEC 10.8）
+      if (!r.session) {
+        savePending({ user_id: uid, email: v.email, display_name: v.display_name });
+        msg("註冊完成，驗證信已寄到 " + v.email + "。點信裡連結後才會登入並寫入顯示名稱。", "ok");
+        setSignedIn(false);
+        return;
+      }
       saveSession(r.session);
-      return client.insertProfile(r.session.access_token, r.data.user.id, v.display_name).then(function (pr) {
+      return client.insertProfile(r.session.access_token, uid, v.display_name).then(function (pr) {
         if (!pr.ok && pr.status === 404) msg("帳號建好了，但 profile 表不存在 —— 先在 dashboard 的 SQL Editor 跑 sql/profile.sql。", "err");
         else if (!pr.ok) msg("帳號建好了，但顯示名稱寫入失敗：" + failText(pr), "err");
         else msg("註冊完成，已登入。", "ok");
@@ -140,31 +158,41 @@
     });
   });
 
-  // 重置密碼：Supabase 把連結導到 SITE_URL，參數在 URL fragment（#access_token=…&type=recovery）
-  function recoveryParams() {
+  // Supabase 把信裡的連結導到 Site URL，參數在 URL fragment（#access_token=…&type=recovery）。
+  // Confirm email 開著時，註冊驗證連結帶的是 type=signup（SPEC 10.8）。
+  function linkParams() {
     const raw = location.hash.replace(/^#/, "") || location.search.replace(/^\?/, "");
     const p = new URLSearchParams(raw);
-    if (p.get("type") === "recovery" && p.get("access_token")) {
-      return { access_token: p.get("access_token"), refresh_token: p.get("refresh_token") };
+    const type = p.get("type");
+    if (p.get("access_token") && (type === "recovery" || type === "signup")) {
+      return {
+        type: type,
+        access_token: p.get("access_token"),
+        refresh_token: p.get("refresh_token"),
+        expires_in: parseInt(p.get("expires_in") || "3600", 10)  // 實測生命期 3600 秒
+      };
     }
     return null;
   }
 
-  const rec = recoveryParams();
-  if (rec) {
-    recoveryMode = true;
+  const link = linkParams();
+  if (link) {
+    recoveryMode = true;  // 從信進來：收尾不收尾成「未登入」畫面，內容只有對應面板
     ["panel-signup", "panel-login", "panel-recover"].forEach(function (id) { $(id).hidden = true; });
     $("tabs").hidden = true;
+  }
+
+  if (link && link.type === "recovery") {
     $("panel-reset").hidden = false;
     msg("請設新密碼。", "ok");
     $("form-reset").addEventListener("submit", function (ev) {
       ev.preventDefault();
       const v = formValues(ev.target);
       if (v.password.length < cfg.min_password_length) { msg(MESSAGES.weak_password, "err"); return; }
-      client.updatePassword(rec.access_token, v.password).then(function (r) {
+      client.updatePassword(link.access_token, v.password).then(function (r) {
         if (!r.ok) { msg(failText(r), "err"); return; }
-        const s = { access_token: rec.access_token, refresh_token: rec.refresh_token,
-                    expires_at: Math.floor(Date.now() / 1000) + 3600 };
+        const s = { access_token: link.access_token, refresh_token: link.refresh_token,
+                    expires_at: Math.floor(Date.now() / 1000) + link.expires_in };
         saveSession(s);
         $("panel-reset").hidden = true;  // 套用成功後收掉設密碼表單，只留狀態列
         msg("新密碼已套用。", "ok");
@@ -173,11 +201,26 @@
     });
   }
 
+  // 點「註冊驗證信」回來：先存下信裡那支 token，補寫暫存的顯示名稱，再顯示登入狀態
+  if (link && link.type === "signup") {
+    const s = { access_token: link.access_token, refresh_token: link.refresh_token,
+                expires_at: Math.floor(Date.now() / 1000) + link.expires_in };
+    saveSession(s);
+    msg("信箱已驗證。", "ok");
+    client.whoami(s.access_token).then(function (r) {
+      const pending = loadPending();
+      const write = (pending && r.ok && pending.user_id === r.data.id)
+        ? client.insertProfile(s.access_token, r.data.id, pending.display_name).then(clearPending)
+        : Promise.resolve();
+      return write.then(function () { return showWho(s); });
+    });
+  }
+
   $("pw-hint").textContent = "密碼至少 " + cfg.min_password_length + " 碼（實測：太短回 weak_password）。";
-  if (!rec) selectTab(tabs[0]);  // recovery 時內容只有設密碼面板，不要把任何分頁開出來
-  // recovery 模式下不收尾成「未登入」畫面：分頁列不該出現，內容只有設密碼面板
+  if (!link) selectTab(tabs[0]);  // 從信進來時內容只有對應面板，不要把任何分頁開出來
+  // 從信進來（link）的分支自己會顯示狀態列，這裡不能再收尾成「未登入」畫面
   ensureSession().then(function (s) {
-    if (s && !rec) showWho(s);
-    else if (!s && !rec) setSignedIn(false);
+    if (s && !link) showWho(s);
+    else if (!s && !link) setSignedIn(false);
   });
 })();

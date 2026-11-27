@@ -43,7 +43,8 @@ python3 tests/account_test.py
 1. **跑 SQL**：dashboard 的 SQL Editor 貼 `sql/profile.sql` 整檔執行（冪等，可重跑）。沒跑之前，註冊/登入照樣成功，只是顯示名稱存不進去（終端會明確提示）。
 2. **設 Site URL**：`Authentication → URL Configuration` 的 Site URL 設成 `https://zhufacheng.github.io/stock-analysis/`，否則重置信裡的連結會導向 Supabase 預設的 `http://localhost:3000`。實測注意：`GET /auth/v1/settings` 用**公開 key 讀不到 `site_url`**，只能從下一封信的連結驗。
 3. **啟用 Pages**：Settings → Pages → `Deploy from a branch` → `main` / `(root)`。第一次建置要手動觸發 `POST /repos/{owner}/{repo}/pages/builds`（啟用後不會自己跑），之後 push 會自動建置。
-4. **SMTP 暫時不用接** —— 內建 SMTP 已實測能把重置信送達（限制：2 封/小時、只發專案團隊成員地址，開放路人註冊前要換第三方）。
+4. **SMTP：已接 Mailjet**（Host `in-v3.mailjet.com`、Port **587**、Username＝Mailjet API key、Password＝Secret key、Sender `zhufacheng@yahoo.com`）。兩條 key 是秘密，只填在 dashboard，不進 git。本機逐指令驗通：AUTH 235 → MAIL 250 → RCPT 250 → **DATA 250 queued**。免費額度 200 封/日、6,000 封/月。
+5. **Confirm email：準備開起來**（註冊要收信驗證）。代碼已支援兩種狀態——開著時註冊回的是 user、沒有 token，顯示名稱會暫存在 `stock.pendingProfile.v1`，等使用者點驗證連結回到頁面（URL 帶 `type=signup`）才寫進 profile。終端層要多設 `STOCK_SERVICE_KEY`（秘密 key）才能在註冊當下就寫顯示名稱。
 
 ### 已驗收／尚未驗收
 

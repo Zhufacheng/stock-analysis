@@ -41,6 +41,9 @@ REPO_ROOT = Path(__file__).resolve().parent
 SUPABASE_URL = os.environ.get("STOCK_SUPABASE_URL", "https://dkhgksmcpvvxhelerkbo.supabase.co")
 # 公開 key（sb_publishable_）：會進 git 是設計，安全靠 Postgres 的 RLS（SPEC 10.2）
 SUPABASE_KEY = os.environ.get("STOCK_SUPABASE_KEY", "sb_publishable_kidthFjgE6Xf1Oxv0CbPmQ_qqbB6Usd")
+# 秘密 key（service_role）：選填。Confirm email 開著時註冊不回 token，終端要寫 profile 就靠它。
+# 是秘密，只從環境變數讀（STOCK_SERVICE_KEY=sb_secret_… python3 account.py register），別寫進檔。
+SERVICE_KEY = os.environ.get("STOCK_SERVICE_KEY", "")
 PROFILE_TABLE = os.environ.get("STOCK_PROFILE_TABLE", "profile")
 DISPLAY_COLUMN = os.environ.get("STOCK_DISPLAY_COLUMN", "顯示名稱")  # 中文欄名（SPEC 10.7）
 ID_COLUMN = os.environ.get("STOCK_ID_COLUMN", "user_id")
@@ -149,6 +152,13 @@ def to_session(payload: dict) -> dict:
     }
 
 
+def user_id_from(payload: dict):
+    """signup 回的 user id 有兩種位置：註冊即登入時在 payload["user"]["id"]；
+    需要收信驗證時整個 payload 就是 user（**本專案尚未實測這一種**，SPEC 10.8）→ 兩種都吃。"""
+    u = payload.get("user") or (payload if payload.get("id") else None)
+    return u.get("id") if u else None
+
+
 # ── profile 表（PostgREST）
 def insert_profile(token: str, user_id: str, display_name: str):
     body = {ID_COLUMN: user_id, DISPLAY_COLUMN: display_name}
@@ -194,10 +204,23 @@ def cmd_register(argv) -> int:
     if status != 200:
         print(f"註冊失敗：{describe(data, status)}", file=sys.stderr)
         return 1
-    session = to_session(data)
+    session = to_session(data) if data.get("access_token") else None
+    if session is None:
+        # Confirm email 開著：signup 回 user、**沒有 access_token** → 還不算登入，也不能寫 profile
+        print(f"已註冊：{email}（Confirm email 開著 → 驗證信已寄出，點信裡連結才算完成）")
+        if SERVICE_KEY:
+            status, pdata = insert_profile(SERVICE_KEY, user_id_from(data), name)
+            if status in (200, 201):
+                print(f"顯示名稱已寫入 {PROFILE_TABLE}（用秘密 key）：{name}")
+            else:
+                print(f"顯示名稱寫入失敗：{describe(pdata, status)}", file=sys.stderr)
+        else:
+            print(f"顯示名稱「{name}」先掛在帳號上，等驗證後才寫入 profile"
+                  f"（終端沒有 token；設 STOCK_SERVICE_KEY 可立刻寫）。", file=sys.stderr)
+        return 0
     save_session(session)
     print(f"已註冊並登入：{email}")
-    status, pdata = insert_profile(session["access_token"], data["user"]["id"], name)
+    status, pdata = insert_profile(session["access_token"], user_id_from(data), name)
     if status in (200, 201):
         print(f"顯示名稱已寫入 {PROFILE_TABLE}：{name}")
     elif status == 404:
