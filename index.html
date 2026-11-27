@@ -20,14 +20,29 @@
   </div>
 </section>
 
-<!-- 未登入時看到的三個分頁 -->
+<!-- 未登入時看到的三個分頁（登入排第一，進頁面就是登入表單） -->
 <nav id="tabs" class="tabs">
-  <button type="button" class="tab" data-panel="panel-signup">註冊</button>
   <button type="button" class="tab" data-panel="panel-login">登入</button>
+  <button type="button" class="tab" data-panel="panel-signup">註冊</button>
   <button type="button" class="tab" data-panel="panel-recover">忘記密碼</button>
 </nav>
 
-<section id="panel-signup" class="card panel">
+<section id="panel-login" class="card panel">
+  <h2>登入</h2>
+  <form id="form-login" novalidate>
+    <label>Email
+      <input type="email" name="email" autocomplete="username" required>
+    </label>
+    <label>密碼
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <div class="row">
+      <button type="submit">登入</button>
+    </div>
+  </form>
+</section>
+
+<section id="panel-signup" class="card panel" hidden>
   <h2>註冊</h2>
   <form id="form-signup" novalidate>
     <label>Email
@@ -42,21 +57,6 @@
     <p class="hint" id="pw-hint"></p>
     <div class="row">
       <button type="submit">建立帳號</button>
-    </div>
-  </form>
-</section>
-
-<section id="panel-login" class="card panel" hidden>
-  <h2>登入</h2>
-  <form id="form-login" novalidate>
-    <label>Email
-      <input type="email" name="email" autocomplete="username" required>
-    </label>
-    <label>密碼
-      <input type="password" name="password" autocomplete="current-password" required>
-    </label>
-    <div class="row">
-      <button type="submit">登入</button>
     </div>
   </form>
 </section>
@@ -89,10 +89,6 @@
 
 <p id="msg" class="msg" role="status" aria-live="polite"></p>
 <noscript><p class="msg">這個頁面需要 JavaScript（要存取 Supabase）。</p></noscript>
-
-<footer>
-  <p class="sub" id="backend-note"></p>
-</footer>
 
 <script src="config.js"></script>
 <script src="config.local.js"></script>

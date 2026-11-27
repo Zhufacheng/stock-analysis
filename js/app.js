@@ -6,6 +6,8 @@
   const cfg = window.STOCK_CONFIG;
   const client = globalThis.StockAuth.makeClient(cfg);
   const $ = function (id) { return document.getElementById(id); };
+  let activeTab = null;  // 目前選中的分頁；setSignedIn(false) 靠它把該顯示的面板還原
+  let recoveryMode = false;  // 點信回來時只顯示設密碼面板，不要把登入表單也開出來
 
   // Supabase 回的是 error_code（實測欄位名），這裡翻成使用者看得懂的一句話
   const MESSAGES = {
@@ -50,6 +52,8 @@
     $("whoami").hidden = !on;
     $("tabs").hidden = on;
     ["panel-signup", "panel-login", "panel-recover"].forEach(function (id) { $(id).hidden = true; });
+    // 未登入時要把選中的分頁還原，否則頁面只剩分頁按鈕、內容全空（要點一下才出現）
+    if (!on && activeTab && !recoveryMode) selectTab(activeTab);
   }
 
   function showWho(session) {
@@ -69,6 +73,7 @@
   // ── 分頁切換
   const tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
   function selectTab(btn) {
+    activeTab = btn;
     tabs.forEach(function (t) {
       t.setAttribute("aria-selected", t === btn ? "true" : "false");
       $(t.dataset.panel).hidden = t !== btn;
@@ -147,6 +152,7 @@
 
   const rec = recoveryParams();
   if (rec) {
+    recoveryMode = true;
     ["panel-signup", "panel-login", "panel-recover"].forEach(function (id) { $(id).hidden = true; });
     $("tabs").hidden = true;
     $("panel-reset").hidden = false;
@@ -160,6 +166,7 @@
         const s = { access_token: rec.access_token, refresh_token: rec.refresh_token,
                     expires_at: Math.floor(Date.now() / 1000) + 3600 };
         saveSession(s);
+        $("panel-reset").hidden = true;  // 套用成功後收掉設密碼表單，只留狀態列
         msg("新密碼已套用。", "ok");
         showWho(s);
       });
@@ -167,7 +174,10 @@
   }
 
   $("pw-hint").textContent = "密碼至少 " + cfg.min_password_length + " 碼（實測：太短回 weak_password）。";
-  $("backend-note").textContent = "後端 " + cfg.supabase_url + " · 公開 key 在前端是設計，安全靠 Postgres 的 RLS。";
-  selectTab(tabs[0]);
-  ensureSession().then(function (s) { if (s && !rec) showWho(s); else if (!s) setSignedIn(false); });
+  if (!rec) selectTab(tabs[0]);  // recovery 時內容只有設密碼面板，不要把任何分頁開出來
+  // recovery 模式下不收尾成「未登入」畫面：分頁列不該出現，內容只有設密碼面板
+  ensureSession().then(function (s) {
+    if (s && !rec) showWho(s);
+    else if (!s && !rec) setSignedIn(false);
+  });
 })();

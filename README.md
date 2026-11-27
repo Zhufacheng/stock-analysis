@@ -16,7 +16,7 @@ A stock analysis tool designed for long-term investors and value investors
 | `account.py` | 終端層指令：`register`／`login`／`whoami`／`logout`／`reset`／`status` |
 | `sql/profile.sql` | 顯示名稱表 ＋ RLS policy，**要你在 dashboard 的 SQL Editor 跑** |
 | `auth-session.json` | 終端登入身分檔（跑 register/login 才產生，已放 `.gitignore`；權限 600） |
-| `tests/` | `auth-api.test.js`（node --test）、`account_test.py`（標準庫 unittest） |
+| `tests/` | `auth-api.test.js`（node --test，邏輯層）、`app-dom.test.js`（node --test，假 DOM 的分頁／面板）、`account_test.py`（標準庫 unittest） |
 
 ### 零安裝跑法（終端層）
 
